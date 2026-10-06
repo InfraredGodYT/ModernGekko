@@ -44,8 +44,8 @@ std::optional<std::string> HashDirectorySha256(const std::filesystem::path& root
   if (ec)
     return std::nullopt;
   std::ranges::sort(files, [&](const auto& left, const auto& right) {
-    return std::filesystem::relative(left, root).generic_string() <
-           std::filesystem::relative(right, root).generic_string();
+    return left.lexically_relative(root).generic_string() <
+       right.lexically_relative(root).generic_string();
   });
   std::vector<std::uint8_t> manifest;
   for (const auto& path : files)
