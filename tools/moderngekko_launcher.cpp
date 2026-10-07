@@ -30,6 +30,14 @@
 
 namespace fs = std::filesystem;
 
+// The assets hash reads every file on the disc; only builds pinned to an
+// assets hash compare it (see RequiredGameError).
+#ifdef MODERNGEKKO_REQUIRED_ASSETS_SHA256
+constexpr bool kHashAssets = true;
+#else
+constexpr bool kHashAssets = false;
+#endif
+
 namespace
 {
 #ifndef MODERNGEKKO_FRONTEND_NAME
@@ -394,7 +402,7 @@ bool ExtractDisc(const fs::path& image, const fs::path& user_directory,
     if (!ApplyBundledDolPatch(output, release_directory, &changed, &patch_error))
       return fail("existing extraction patching failed: " + patch_error);
   }
-  const auto existing = moderngekko::InspectGame(output);
+  const auto existing = moderngekko::InspectGame(output, kHashAssets);
   if (existing && RequiredGameError(*existing.metadata).empty())
   {
     std::string error;
@@ -446,7 +454,7 @@ bool ExtractDisc(const fs::path& image, const fs::path& user_directory,
     return fail("extracted DOL patching failed: " + dol_patch_error);
   }
 
-  const auto inspected = moderngekko::InspectGame(staging);
+  const auto inspected = moderngekko::InspectGame(staging, kHashAssets);
   if (!inspected)
   {
     fs::remove_all(staging, ec);
@@ -587,7 +595,7 @@ int main(int argc, char** argv)
   auto current_metadata =
       ApplyBundledDolPatch(current_game, release_directory, &current_dol_changed,
                            &current_dol_error) ?
-          moderngekko::InspectGame(current_game) :
+          moderngekko::InspectGame(current_game, kHashAssets) :
           moderngekko::GameInspectResult{{}, current_dol_error};
   if (current_metadata && !RequiredGameError(*current_metadata.metadata).empty())
     current_metadata = {{}, RequiredGameError(*current_metadata.metadata)};
@@ -758,7 +766,7 @@ int main(int argc, char** argv)
       if (extraction.finished_game)
       {
         current_game = *extraction.finished_game;
-        current_metadata = moderngekko::InspectGame(current_game);
+        current_metadata = moderngekko::InspectGame(current_game, kHashAssets);
         if (current_metadata && !RequiredGameError(*current_metadata.metadata).empty())
           current_metadata = {{}, RequiredGameError(*current_metadata.metadata)};
         extraction.finished_game.reset();

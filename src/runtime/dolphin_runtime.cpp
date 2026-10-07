@@ -609,6 +609,11 @@ RuntimeCreateResult Runtime::Create(RuntimeConfig config) {
 
   if (!s_external_ui_common) {
     UICommon::SetUserDirectory(impl->config.user_directory.string());
+    // Create the user tree (Cache/, Cache/Shaders/, StateSaves/, Logs/...) as
+    // DolphinQt does. The shader cache only creates its own leaf directory,
+    // so without Cache/ it can never be written and every boot recompiled
+    // every shader while waiting for them before starting.
+    UICommon::CreateDirectories();
     UICommon::Init();
     impl->ui_initialized = true;
   }
@@ -700,11 +705,16 @@ RuntimeCreateResult Runtime::Create(RuntimeConfig config) {
     recomp_source = StaticRecompModuleSource::Attached(
         reinterpret_cast<const StaticRecompModuleDesc *>(
             impl->config.module.descriptor));
-  recomp_source.host_call = &ModManager::HostCall;
-  recomp_source.host_call_contains = &ModManager::HostCallContains;
-  recomp_source.host_call_range_contains =
-      &ModManager::HostCallRangeContains;
-  recomp_source.host_call_user = impl->mods.get();
+  // Only route dispatches through the mod manager when a loaded mod actually
+  // intercepts guest code: with the hook installed, every native dispatch
+  // (millions per second) asks the mod manager about its address.
+  if (impl->mods->HasGuestInterception()) {
+    recomp_source.host_call = &ModManager::HostCall;
+    recomp_source.host_call_contains = &ModManager::HostCallContains;
+    recomp_source.host_call_range_contains =
+        &ModManager::HostCallRangeContains;
+    recomp_source.host_call_user = impl->mods.get();
+  }
   jit.SetStaticRecompModuleSource(std::move(recomp_source));
 
   s_runtime_active = true;

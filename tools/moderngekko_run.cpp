@@ -279,7 +279,13 @@ int RunMain(int argc, char **argv) {
   if (dol_changed)
     std::cout << "Applied native DOL patches\n";
 #endif
-  const auto inspected = moderngekko::InspectGame(config.game_root);
+  // The assets hash reads every file on the disc; only pinned builds need it.
+#ifdef MODERNGEKKO_REQUIRED_ASSETS_SHA256
+  constexpr bool hash_assets = true;
+#else
+  constexpr bool hash_assets = false;
+#endif
+  const auto inspected = moderngekko::InspectGame(config.game_root, hash_assets);
   if (!inspected) {
     std::cerr << "invalid game: " << inspected.error << '\n';
     return 2;

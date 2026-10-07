@@ -541,7 +541,8 @@ int RunNetplayLobby(RuntimeConfig runtime_config, ConfigResult frontend_config,
     return static_cast<int>(NetplayExitCode::InvalidConfiguration);
   }
 
-  const GameInspectResult inspected = InspectGame(runtime_config.game_root);
+  // Netplay compares assets_sha256 between peers, so it needs the full hash.
+  const GameInspectResult inspected = InspectGame(runtime_config.game_root, true);
   if (!inspected) {
     detail::SetExternalUICommon(false);
     UICommon::Shutdown();

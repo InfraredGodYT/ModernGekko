@@ -35,7 +35,11 @@ struct GameInspectResult
   explicit operator bool() const { return metadata.has_value(); }
 };
 
-GameInspectResult InspectGame(const std::filesystem::path& root);
+// hash_assets: also compute assets_sha256, a SHA-256 over every file under
+// files/. That reads the whole disc (over a gigabyte for many games), so only
+// callers that compare it -- netplay compatibility and builds pinned with
+// MODERNGEKKO_REQUIRED_ASSETS_SHA256 -- ask for it; otherwise it stays empty.
+GameInspectResult InspectGame(const std::filesystem::path& root, bool hash_assets = false);
 std::optional<std::string> HashFileSha256(const std::filesystem::path& path);
 std::optional<std::string> HashDirectorySha256(const std::filesystem::path& root);
 }  // namespace moderngekko
