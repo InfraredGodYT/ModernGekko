@@ -21,6 +21,8 @@ struct BuildOptions
   pgo::PgoBuildOptions pgo;
   pgo::ManifestFacts pgo_facts;
   bool make_active = true;
+  // GameCube: also recompile the disc's .rel modules (DolRecomp --rels).
+  bool compile_rels = true;
 };
 
 struct PgoRunOptions
@@ -84,6 +86,8 @@ inline CommandLine ParseCommandLine(int argc, const char* const* argv,
       parsed.build.opt_level = argv[++i];
     else if (argument == "--output" && i + 1 < argc)
       parsed.build.output = fs::path(argv[++i]);
+    else if (argument == "--no-rels")
+      parsed.build.compile_rels = false;
     else if (argument == "--profile-dir" && i + 1 < argc && is_pgo_run)
       parsed.pgo_run.profile_dir = fs::path(argv[++i]);
     else if (argument == "--llvm-profdata" && i + 1 < argc && is_pgo_run)

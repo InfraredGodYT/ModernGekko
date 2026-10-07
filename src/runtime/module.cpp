@@ -73,7 +73,8 @@ static bool rel_modules_are_valid(const ModernGekkoModuleDesc* descriptor)
 
     if (descriptor->num_rel_modules == 0u)
         return descriptor->rel_modules == NULL;
-    if (descriptor->rel_modules == NULL)
+    if (descriptor->rel_modules == NULL || descriptor->rel_slot_bases == NULL ||
+        descriptor->num_rel_slots == 0u)
         return false;
     for (module_index = 0; module_index < descriptor->num_rel_modules; ++module_index)
     {
@@ -81,7 +82,8 @@ static bool rel_modules_are_valid(const ModernGekkoModuleDesc* descriptor)
         uint32_t section_index;
         if (module->module_id == 0u || module->section_count == 0u ||
             module->section_info_offset < 0x40u || module->file_size < 0x40u ||
-            module->sections == NULL || module->num_sections == 0u)
+            module->sections == NULL || module->num_sections == 0u ||
+            (uint64_t)module->first_slot + module->section_count > descriptor->num_rel_slots)
         {
             return false;
         }

@@ -585,6 +585,38 @@ std::optional<fs::path> Build(const char* argv0, const fs::path& root,
     return std::nullopt;
   }
 
+  // Many GameCube games keep most of their code in .rel modules loaded at
+  // runtime. DolRecomp compiles them alongside main.dol (position-independent,
+  // relocated by the chassis when the game links them). Their contents are
+  // part of the cache key, so a different set of RELs rebuilds the module.
+  const fs::path rel_dir = root / "files";
+  std::vector<fs::path> rel_files;
+  if (options.compile_rels && game.platform == moderngekko::GamePlatform::GameCube)
+  {
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(rel_dir, ec), end; !ec && it != end;
+         it.increment(ec))
+    {
+      std::string extension = it->path().extension().string();
+      std::transform(extension.begin(), extension.end(), extension.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      if (extension == ".rel" && it->is_regular_file(ec))
+        rel_files.push_back(it->path());
+    }
+    std::sort(rel_files.begin(), rel_files.end());
+  }
+  std::string rel_fingerprint = options.compile_rels ? "rels" : "no-rels";
+  for (const fs::path& rel : rel_files)
+  {
+    const auto hash = moderngekko::HashFileSha256(rel);
+    if (!hash)
+    {
+      std::cerr << "could not read REL: " << rel << '\n';
+      return std::nullopt;
+    }
+    rel_fingerprint += ";" + fs::relative(rel, rel_dir).generic_string() + "=" + *hash;
+  }
+
   std::string compiler;
   if (options.toolchain == "auto")
 #if defined(_MSC_VER)
@@ -649,12 +681,18 @@ std::optional<fs::path> Build(const char* argv0, const fs::path& root,
   else if (compiler == "gcc")
   {
     flags = "compile:-O" + opt +
-            " -fvisibility=hidden -ffp-contract=off -fno-fast-math link:no-lto";
+            " -g1 -fvisibility=hidden -ffp-contract=off -fno-fast-math link:no-lto";
   }
   else
   {
     flags = opt == "0" ? "compile:/Od /fp:strict" : "compile:/O2 /fp:strict";
   }
+  // `flags` above only feeds the cache key and manifest. Debug info has to be
+  // passed to the module's CMake configure separately (see CMAKE_C_FLAGS below).
+  // -g1 adds function names and line tables for profilers without changing
+  // GCC's generated code. Full -g is too big: with REL code compiled in, the
+  // module's debug info pushes the DLL past Windows' 2 GB image limit.
+  const std::string debug_compile_flags = compiler == "gcc" ? "-g1" : "";
 
   std::string pgo_compile_flags;
   if (options.pgo.mode == moderngekko::pgo::PgoMode::Generate)
@@ -677,7 +715,7 @@ std::optional<fs::path> Build(const char* argv0, const fs::path& root,
       std::string(architecture) + "|" + flags + "|backend=" + options.backend +
       "|patches=" + patches.fingerprint + "|dolrecomp_binary=" +
       *dolrecomp_hash + "|" + moderngekko::pgo::PgoCacheIdentity(options.pgo) +
-      DolRecompCodegenIdentity();
+      DolRecompCodegenIdentity() + "|" + rel_fingerprint;
   std::ostringstream key_tail;
   key_tail << std::hex << std::setfill('0') << std::setw(16) << Fnv1a(identity);
   const std::string cache_key = game.dol_sha256 + "-" + key_tail.str();
@@ -758,7 +796,14 @@ std::optional<fs::path> Build(const char* argv0, const fs::path& root,
                          std::to_string(std::max(1u, std::thread::hardware_concurrency())) +
                          " --backend=" + options.backend + " ";
   if (game.platform == moderngekko::GamePlatform::GameCube)
+  {
     generate += "--cpu gekko --gamecube " + Quote(recomp_dol) + " " + Quote(generated_parent);
+    if (!rel_files.empty())
+    {
+      generate += " --rels " + Quote(rel_dir);
+      std::cout << "compiling " << rel_files.size() << " REL modules with main.dol\n";
+    }
+  }
   else
     generate += "--cpu broadway " + Quote(recomp_dol) + " " + game.disc_id + " " +
                 Quote(generated_parent);
@@ -806,9 +851,13 @@ std::optional<fs::path> Build(const char* argv0, const fs::path& root,
            : " -DRECOMPCORE_MODULE_OPT_LEVEL=" + options.opt_level) +
       " -DCHASSIS_ABI_DIR=" +
       Quote(source_root / "vendor/dolphin/Source/Core/Core/PowerPC/StaticRecomp");
+  std::string module_c_flags = debug_compile_flags;
   if (!pgo_compile_flags.empty())
-    configure += " -DCMAKE_C_FLAGS=" + QuoteText(pgo_compile_flags) +
-                 " -DCMAKE_SHARED_LINKER_FLAGS=" + QuoteText(pgo_compile_flags);
+    module_c_flags += (module_c_flags.empty() ? "" : " ") + pgo_compile_flags;
+  if (!module_c_flags.empty())
+    configure += " -DCMAKE_C_FLAGS=" + QuoteText(module_c_flags);
+  if (!pgo_compile_flags.empty())
+    configure += " -DCMAKE_SHARED_LINKER_FLAGS=" + QuoteText(pgo_compile_flags);
   if (!RunCommand(configure) ||
       !RunCommand("cmake --build " + Quote(module_build) + " -j" +
                   std::to_string(compile_jobs)))

@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define MODERNGEKKO_MODULE_ABI_VERSION 3u
+#define MODERNGEKKO_MODULE_ABI_VERSION 4u
 #define MODERNGEKKO_GET_MODULE_SYMBOL "staticrecomp_get_module"
 
 #if defined(_WIN32)
@@ -43,6 +43,9 @@ typedef struct ModernGekkoRelModule
     uint32_t file_size;
     const ModernGekkoRelSection* sections;
     uint32_t num_sections;
+    // ABI v4: slot of this module's section 0 in rel_slot_bases; section i
+    // uses slot first_slot + i.
+    uint32_t first_slot;
 } ModernGekkoRelModule;
 
 typedef struct ModernGekkoModuleDesc
@@ -65,6 +68,11 @@ typedef struct ModernGekkoModuleDesc
     const uint64_t* chunk_hashes;
     const ModernGekkoRelModule* rel_modules;
     uint32_t num_rel_modules;
+    // ABI v4: runtime address of every REL section, written by the chassis
+    // when the game links a module and read by the module's position-
+    // independent REL code. NULL / 0 when the module has no RELs.
+    uint32_t* rel_slot_bases;
+    uint32_t num_rel_slots;
 } ModernGekkoModuleDesc;
 
 typedef const ModernGekkoModuleDesc* (*ModernGekkoGetModuleFn)(void);
